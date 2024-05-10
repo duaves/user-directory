@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cправочник пользователей</title>
+    <script
+      src="https://cdn.webix.com/edge/webix.js"
+      type="text/javascript"
+    ></script>
+    <link
+      rel="stylesheet"
+      href="https://cdn.webix.com/edge/webix.css"
+      type="text/css"
+    />
+    <link rel="stylesheet" href="css/style.css" type="text/css" />
+  </head>
+  <body>
+    <script>
+      webix.ui({
+        type: "space",
+        rows: [
+          { type: "header", template: "Справочник пользователей" },
+          {
+            type: "wide",
+            cols: [
+              {
+                type: "clean",
+                rows: [
+                  {
+                    view: "sidebar",
+                    id: "sidebar",
+                    width: 200,
+
+                    data: [
+                      {
+                        id: "users",
+                        value: "Пользователи",
+                        icon: "mdi mdi-account-group",
+                      },
+                      {
+                        id: "roles",
+                        value: "Роли",
+                        icon: "mdi mdi-account-key",
+                      },
+                    ],
+                    on: {
+                      onAfterSelect: function (id) {
+                        // Обработчик события выбора пункта меню
+                        if (id === "users") {
+                          // Переключение на таблицу пользователей
+                          $$("user_table").show();
+                          $$("role_table").hide();
+                        } else if (id === "roles") {
+                          // Переключение на таблицу ролей
+                          $$("role_table").show();
+                          $$("user_table").hide();
+                        }
+                      },
+                    },
+                  },
+                ],
+              },
+              {
+                type: "wide",
+                rows: [
+                  {
+                    cells: [
+                      {
+                        id: "user_table",
+                        view: "datatable",
+
+                        columns: [
+                          { id: "full_name", header: "ФИО", fillspace: true },
+                          { id: "login", header: "Логин", fillspace: true},
+                          { id: "password", header: "Пароль", fillspace: true, editor: "password"  },
+                          { id: "role_id", header: "Роль", fillspace: true },
+                          {
+                            id: "is_blocked",
+                            header: "Заблокирован",
+                            fillspace: true,
+                            template: function (obj) {
+                              return obj.is_blocked === 1 ? "Да" : "Нет";
+                            },
+                          },
+                          {
+                            id: "edit",
+                            header: "",
+                            css: "pointer",
+                            template: "{common.editIcon()}",
+                          },
+                          {
+                            id: "delete",
+                            header: "",
+                            css: "pointer",
+                            template: "{common.trashIcon()}",
+                          },
+                        ],
+                        on: {
+                          onItemClick: function (id, e, node) {
+                            // Проверяем, был ли клик на иконку корзины
+                            if (id.column === "delete") {
+                              var userId = id.row; // Получаем идентификатор пользователя из строки, где был клик
+                              deleteSelectedUser(userId);
+                              webix.message("Элемент удален"); // пример вывода сообщения
+                            }
+                            if (id.column === "edit") {
+                              var selectedItem = $$("user_table").getItem(id.row); // Получаем данные выбранного пользователя
+
+            if (selectedItem) {
+                // Заполняем форму данными выбранного пользователя
+                $$("update_win").getBody().setValues(selectedItem);
+
+                // Открываем окно редактирования
+                $$("update_win").show();
+            } else {
+                webix.message("Выберите пользователя для редактирования");
+            }
+                              
+                            }
+                          },
+                        },
+                      },
+
+                      {
+                        id: "role_table",
+                        view: "datatable",
+                        autoConfig: true,
+                        columns: [
+                          { id: "role_name", header: "Роли", fillspace: true },
+                        ],
+                      },
+                    ],
+                  },
+
+                  {
+                    height: 45,
+                    cols: [
+                      {},
+                      {
+                        view: "button",
+                        label: "Создать нового пользователя",
+                        width: 300,
+                        css: "webix_primary",
+                        click: function () {
+                          $$("my_win").getBody().clear();
+
+                          $$("my_win").show();
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+    
+      // Функция для создания нового пользователя
+      function createNewUser() {
+        // Получаем данные из формы
+        var formData = $$("my_win").getBody().getValues();
+
+        // Определяем значение is_blocked в зависимости от выбранной опции в элементе select
+        var isBlocked = parseInt(formData.is_blocked) === 1 ? 1 : 0; // Проверяем значение is_blocked на равенство 1
+
+        // Добавляем значение is_blocked к данным формы
+        formData.is_blocked = isBlocked;
+        console.log(formData);
+        // Отправляем данные на сервер для создания нового пользователя
+        webix
+          .ajax()
+          .post("/php/create_user.php", formData, function (text, data, xhr) {
+            var response = data.json();
+            if (response.success) {
+              // Если пользователь успешно создан
+              webix.message({
+                type: "success",
+                text: "Пользователь успешно создан",
+              });
+              // Закрываем окно
+              $$("my_win").hide();
+              updateUsersTable();
+              // Обновляем таблицу пользователей
+              $$("user_table").load("/php/get_users.php"); 
+            } else {
+              // Если произошла ошибка при создании пользователя, выводим сообщение об ошибке
+              webix.message({
+                type: "error",
+                text: "Ошибка при создании пользователя",
+              });
+            }
+          });
+      }
+
+      // Функция для редактирования пользователя
+      function updateUser() {
+        // Получаем данные из формы
+        var formData = $$("update_win").getBody().getValues();
+
+        // Определяем значение is_blocked в зависимости от выбранной опции в элементе select
+        var isBlocked = parseInt(formData.is_blocked) === 1 ? 1 : 0; // Проверяем значение is_blocked на равенство 1
+
+        // Добавляем значение is_blocked к данным формы
+        formData.is_blocked = isBlocked;
+        console.log(formData);
+        // Отправляем данные на сервер для редактирования пользователя
+        webix
+          .ajax()
+          .post("/php/update_user.php", formData, function (text, data, xhr) {
+            var response = data.json();
+            if (response.success) {
+              // Если пользователь успешно отредактирован
+              webix.message({
+                type: "success",
+                text: "Пользователь успешно отредактирован",
+              });
+              // Закрываем окно
+              $$("update_win").hide();
+              updateUsersTable();
+              // Обновляем таблицу пользователей
+              $$("user_table").load("/php/get_users.php"); // Предполагается, что get_users.php возвращает обновленный список пользователей
+            } else {
+              // Если произошла ошибка при редактировании пользователя, выводим сообщение об ошибке
+              webix.message({
+                type: "error",
+                text: "Ошибка при редактировании пользователя",
+              });
+            }
+          });
+      }
+
+      webix.ui({
+        view: "window",
+        move: true,
+        id: "update_win",
+        width: 400,
+        head: "Редактирование пользователя",
+        position: "center",
+        body: {
+          view: "form",
+          borderless: true,
+          elements: [
+            { view: "text", label: "ФИО:", name: "full_name" },
+            { view: "text", label: "Логин:", name: "login" },
+            {
+              view: "text",
+              type: "password",
+              label: "Пароль",
+              name: "password",
+            },
+            { view: "select", label: "Роль:", name: "role_id", options: [] },
+            {
+              view: "select",
+              label: "Блок:",
+              name: "is_blocked",
+              options: [
+                { id: 0, value: "Не заблокирован" },
+                { id: 1, value: "Заблокирован" },
+              ],
+            },
+            {
+              cols: [
+                { view: "button", value: "Редактировать", click: updateUser },
+                {
+                  view: "button",
+                  value: "Закрыть",
+                  click: "$$('update_win').hide();",
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      webix.ui({
+        view: "window",
+        move: true,
+        id: "my_win",
+        width: 400,
+        head: "Создать нового пользователя",
+        position: "center",
+        body: {
+          view: "form",
+          borderless: true,
+          elements: [
+            { view: "text", label: "ФИО:", name: "full_name" },
+            { view: "text", label: "Логин:", name: "login" },
+            {
+              view: "text",
+              type: "password",
+              label: "Пароль",
+              name: "password",
+            },
+            { view: "select", label: "Роль:", name: "role_id", options: [] },
+            {
+              view: "select",
+              label: "Блок:",
+              name: "is_blocked",
+              options: [
+                { id: 0, value: "Не заблокирован" },
+                { id: 1, value: "Заблокирован" },
+              ],
+            },
+            {
+              cols: [
+                { view: "button", value: "Создать", click: createNewUser },
+                {
+                  view: "button",
+                  value: "Закрыть",
+                  click: "$$('my_win').hide();",
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+
+      function updateRoleOptions(roles) {
+        var select = $$("my_win").getBody().queryView({ name: "role_id" });
+        var options = roles.map(function (role) {
+          return { id: role.id, value: role.role_name }; 
+        });
+        select.define("options", options);
+        select.refresh();
+      }
+
+      function updateUserRoleOptions(roles) {
+        var select = $$("update_win").getBody().queryView({ name: "role_id" });
+        var options = roles.map(function (role) {
+          return { id: role.id, value: role.role_name }; 
+        });
+        select.define("options", options);
+        select.refresh();
+      }
+    
+      // Создаем функцию для отправки AJAX запроса и заполнения таблицы данными
+      function getUsersAndPopulateTable() {
+        var xhr = new XMLHttpRequest();
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === XMLHttpRequest.DONE) {
+            if (xhr.status === 200) {
+              var users = JSON.parse(xhr.responseText);
+              // Получаем ссылку на таблицу по id
+              var dataTable = $$("user_table");
+              // Очищаем текущие данные в таблице
+              dataTable.clearAll();
+              // Добавляем новые данные в таблицу
+              dataTable.parse(users);
+            } else {
+              console.error("Ошибка при выполнении запроса: " + xhr.status);
+            }
+          }
+        };
+        xhr.open("GET", "/php/get_users.php", true);
+        xhr.send();
+      }
+
+      // Вызываем функцию для получения ролей и заполнения таблицы
+      getUsersAndPopulateTable();
+
+      function getRoles() {
+        var xhr = new XMLHttpRequest();
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === XMLHttpRequest.DONE) {
+            if (xhr.status === 200) {
+              var roles = JSON.parse(xhr.responseText);
+              // Получаем ссылку на таблицу по id
+              var dataTable = $$("role_table");
+              // Очищаем текущие данные в таблице
+              dataTable.clearAll();
+              // Добавляем новые данные в таблицу
+              dataTable.parse(roles);
+              // Сохраняем роли в глобальной переменной
+              window.rolesData = roles;
+              // Обновляем данные в таблице пользователей
+              updateUsersTable(roles);
+              // Обновляем опции в элементе select
+              updateRoleOptions(roles);
+              updateUserRoleOptions(roles);
+            } else {
+              console.error("Ошибка при выполнении запроса: " + xhr.status);
+            }
+          }
+        };
+        xhr.open("GET", "/php/get_roles.php", true);
+        xhr.send();
+      }
+
+      function updateUsersTable() {
+        var xhr = new XMLHttpRequest();
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === XMLHttpRequest.DONE) {
+            if (xhr.status === 200) {
+              var users = JSON.parse(xhr.responseText);
+              // Обновляем данные в таблице пользователей
+              var dataTable = $$("user_table");
+              dataTable.clearAll();
+              // Заменяем идентификаторы ролей на соответствующие названия
+              users.forEach(function (user) {
+                var role = window.rolesData.find(function (role) {
+                  return role.id === user.role_id;
+                });
+                if (role) {
+                  user.role_id = role.role_name; 
+                }
+              });
+              dataTable.parse(users);
+            } else {
+              console.error("Ошибка при выполнении запроса: " + xhr.status);
+            }
+          }
+        };
+        xhr.open("GET", "/php/get_users.php", true);
+        xhr.send();
+      }
+
+      
+      getRoles();
+
+      //функция для удаления пользователя
+      function deleteSelectedUser(userId) {
+        if (userId) {
+          // Отправляем запрос на удаление пользователя
+          webix
+            .ajax()
+            .post(
+              "/php/delete_user.php",
+              { user_id: userId },
+              function (text, data, xhr) {
+                var response = data.json();
+                if (response.success) {
+                  // Если удаление прошло успешно, обновляем таблицу пользователей
+                  $$("user_table").remove(userId);
+                } else {
+                  // Если удаление завершилось неудачно, выводим сообщение об ошибке
+                  webix.message({
+                    type: "error",
+                    text: "Ошибка при удалении пользователя",
+                  });
+                }
+              }
+            );
+        } else {
+          // Если идентификатор пользователя не найден, выводим сообщение об ошибке
+          webix.message({
+            type: "error",
+            text: "Идентификатор пользователя не найден",
+          });
+        }
+      }
+
+      
+    </script>
+  </body>
+</html>
